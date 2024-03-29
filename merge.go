@@ -5,51 +5,19 @@ import (
 	"reflect"
 )
 
-func deepMerge(dv, sv reflect.Value) error {
+func fromMethod(dv, sv reflect.Value, fds map[string]struct{}) error {
 	dt := dv.Type()
 	st := sv.Type()
-
-	if dv.Kind() != reflect.Struct {
-		return fmt.Errorf("invalid field: %s, should be struct,map", dt.Name())
-	}
-
-	if sv.Kind() != reflect.Struct {
-		return fmt.Errorf("invalid field: %s, should be struct,map", st.Name())
-	}
-
-	fds := map[string]struct{}{}
-
-	for i := 0; i < sv.NumField(); i++ {
-		sfv := sv.Field(i)
-		sft := st.Field(i)
-
-		dft, has := dt.FieldByName(sft.Name)
-		if has {
-			fds[sft.Name] = struct{}{}
-			dfv := dv.FieldByName(sft.Name)
-			if sfv.Kind() == reflect.Struct {
-				if err := deepMerge(dfv, sfv); err != nil {
-					return err
-				}
-			} else if dft.Type == sft.Type {
-				if !sfv.IsZero() {
-					dfv.Set(sfv)
-				}
-			}
-		}
-	}
 
 	for i := 0; i < sv.NumMethod(); i++ {
 		sfmv := sv.Method(i)
 		sfmt := st.Method(i)
 
-		_, has := fds[sfmt.Name]
-		if has {
+		if _, has := fds[sfmt.Name]; has {
 			continue
 		}
 
-		dft, has := dt.FieldByName(sfmt.Name)
-		if !has {
+		if _, has := dt.FieldByName(sfmt.Name); has {
 			continue
 		}
 
@@ -68,11 +36,79 @@ func deepMerge(dv, sv reflect.Value) error {
 			}
 		}
 
-		if dft.Type == sfv.Type() {
-			if !sfv.IsZero() {
-				dfv.Set(sfv)
+		if sfv.IsZero() {
+			continue
+		}
+
+		sfv = reflect.Indirect(sfv)
+		if dfv.Type() == sfv.Type() {
+			dfv.Set(sfv)
+		}
+
+		if sfv.CanAddr() && sfv.Addr().Type() == dfv.Type() {
+			dfv.Set(sfv.Addr())
+		}
+
+		if dfv.CanAddr() && sfv.Type() == dfv.Addr().Type() {
+			dfv.Elem().Set(sfv)
+		}
+	}
+
+	return nil
+}
+
+func deepMerge(dv, sv reflect.Value) error {
+	dt := dv.Type()
+	st := sv.Type()
+
+	if dv.Kind() != reflect.Struct {
+		return fmt.Errorf("invalid field: %s, should be struct,map", dt.Name())
+	}
+
+	if sv.Kind() != reflect.Struct {
+		return fmt.Errorf("invalid field: %s, should be struct,map", st.Name())
+	}
+
+	fds := map[string]struct{}{}
+
+	for i := 0; i < sv.NumField(); i++ {
+		sfv := sv.Field(i)
+		sft := st.Field(i)
+
+		if sfv.IsZero() {
+			continue
+		}
+
+		_, has := dt.FieldByName(sft.Name)
+		if !has {
+			continue
+		}
+
+		fds[sft.Name] = struct{}{}
+		dfv := dv.FieldByName(sft.Name)
+		if sfv.Kind() == reflect.Struct {
+			if err := deepMerge(dfv, sfv); err != nil {
+				return err
 			}
 		}
+
+		sfv = reflect.Indirect(sfv)
+		if dfv.Type() == sfv.Type() {
+			dfv.Set(sfv)
+		}
+
+		if sfv.CanAddr() && sfv.Addr().Type() == dfv.Type() {
+			dfv.Set(sfv.Addr())
+		}
+
+		if dfv.CanAddr() && sfv.Type() == dfv.Addr().Type() {
+			dfv.Elem().Set(sfv)
+		}
+	}
+
+	fromMethod(dv, sv, fds)
+	if sv.CanAddr() {
+		fromMethod(dv, sv.Addr(), fds)
 	}
 
 	return nil
