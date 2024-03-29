@@ -5,7 +5,7 @@ import (
 	"reflect"
 )
 
-func fromMethod(dv, sv reflect.Value, fds map[string]struct{}) error {
+func fromMethod(dv, sv reflect.Value, fds *map[string]struct{}) error {
 	dt := dv.Type()
 	st := sv.Type()
 
@@ -13,7 +13,7 @@ func fromMethod(dv, sv reflect.Value, fds map[string]struct{}) error {
 		sfmv := sv.Method(i)
 		sfmt := st.Method(i)
 
-		if _, has := fds[sfmt.Name]; has {
+		if _, has := (*fds)[sfmt.Name]; has {
 			continue
 		}
 
@@ -40,6 +40,7 @@ func fromMethod(dv, sv reflect.Value, fds map[string]struct{}) error {
 			continue
 		}
 
+		(*fds)[sfmt.Name] = struct{}{}
 		sfv = reflect.Indirect(sfv)
 		if dfv.Type() == sfv.Type() {
 			dfv.Set(sfv)
@@ -106,9 +107,9 @@ func deepMerge(dv, sv reflect.Value) error {
 		}
 	}
 
-	fromMethod(dv, sv, fds)
+	fromMethod(dv, sv, &fds)
 	if sv.CanAddr() {
-		fromMethod(dv, sv.Addr(), fds)
+		fromMethod(dv, sv.Addr(), &fds)
 	}
 
 	return nil
