@@ -14,6 +14,10 @@ type target struct {
 	}
 	E string
 	F string
+	G struct {
+		H string
+		I int
+	}
 }
 
 type source0 struct {
@@ -36,17 +40,18 @@ type source1 struct {
 	C struct {
 		D *string
 	}
+	G map[string]interface{}
 }
 
 func main() {
 	str1 := "STR01"
 	t := &target{}
 	s0 := &source0{A: "A0", B: 0}
-	s1 := &source1{B: 1, C: struct{ D *string }{D: &str1}}
+	s1 := &source1{B: 1, C: struct{ D *string }{D: &str1}, G: map[string]interface{}{"H": "H002", "I": 12}}
 
 	if err := merge.Merge(t, s0, s1); err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("%#v", t)
+	fmt.Printf("%#v\n\n", t)
 }

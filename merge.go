@@ -5,6 +5,41 @@ import (
 	"reflect"
 )
 
+func i2v(v interface{}, kind reflect.Kind) reflect.Value {
+	switch kind {
+	case reflect.Bool:
+		return reflect.ValueOf(v.(bool))
+	case reflect.Int:
+		return reflect.ValueOf(v.(int))
+	case reflect.Int8:
+		return reflect.ValueOf(v.(int8))
+	case reflect.Int16:
+		return reflect.ValueOf(v.(int16))
+	case reflect.Int32:
+		return reflect.ValueOf(v.(int32))
+	case reflect.Int64:
+		return reflect.ValueOf(v.(int64))
+	case reflect.Uint:
+		return reflect.ValueOf(v.(uint))
+	case reflect.Uint8:
+		return reflect.ValueOf(v.(uint8))
+	case reflect.Uint16:
+		return reflect.ValueOf(v.(uint16))
+	case reflect.Uint32:
+		return reflect.ValueOf(v.(uint32))
+	case reflect.Uint64:
+		return reflect.ValueOf(v.(uint64))
+	case reflect.Float32:
+		return reflect.ValueOf(v.(float32))
+	case reflect.Float64:
+		return reflect.ValueOf(v.(float64))
+	case reflect.String:
+		return reflect.ValueOf(v.(string))
+	}
+
+	return reflect.Value{}
+}
+
 func fromMethod(dv, sv reflect.Value, fds *map[string]struct{}) error {
 	dt := dv.Type()
 	st := sv.Type()
@@ -58,19 +93,9 @@ func fromMethod(dv, sv reflect.Value, fds *map[string]struct{}) error {
 	return nil
 }
 
-func deepMerge(dv, sv reflect.Value) error {
+func fromField(dv, sv reflect.Value, fds *map[string]struct{}) error {
 	dt := dv.Type()
 	st := sv.Type()
-
-	if dv.Kind() != reflect.Struct {
-		return fmt.Errorf("invalid field: %s, should be struct,map", dt.Name())
-	}
-
-	if sv.Kind() != reflect.Struct {
-		return fmt.Errorf("invalid field: %s, should be struct,map", st.Name())
-	}
-
-	fds := map[string]struct{}{}
 
 	for i := 0; i < sv.NumField(); i++ {
 		sfv := sv.Field(i)
@@ -85,9 +110,9 @@ func deepMerge(dv, sv reflect.Value) error {
 			continue
 		}
 
-		fds[sft.Name] = struct{}{}
+		(*fds)[sft.Name] = struct{}{}
 		dfv := dv.FieldByName(sft.Name)
-		if sfv.Kind() == reflect.Struct {
+		if sfv.Kind() == reflect.Struct || sfv.Kind() == reflect.Map {
 			if err := deepMerge(dfv, sfv); err != nil {
 				return err
 			}
@@ -107,9 +132,66 @@ func deepMerge(dv, sv reflect.Value) error {
 		}
 	}
 
-	fromMethod(dv, sv, &fds)
-	if sv.CanAddr() {
-		fromMethod(dv, sv.Addr(), &fds)
+	return nil
+}
+
+func fromMap(dv, sv reflect.Value, fds *map[string]struct{}) error {
+	dt := dv.Type()
+
+	ks := sv.MapKeys()
+	for _, k := range ks {
+		name, ok := k.Interface().(string)
+		if !ok {
+			continue
+		}
+		if _, has := (*fds)[name]; has {
+			continue
+		}
+
+		_, has := dt.FieldByName(name)
+		if !has {
+			continue
+		}
+
+		sfv := sv.MapIndex(k)
+		if sfv.IsZero() {
+			continue
+		}
+
+		(*fds)[name] = struct{}{}
+		dfv := dv.FieldByName(name)
+		if sfv.Kind() == reflect.Interface {
+			sfv = i2v(sfv.Interface(), dfv.Kind())
+		}
+
+		dfv.Set(sfv)
+	}
+
+	return nil
+}
+
+func deepMerge(dv, sv reflect.Value) error {
+	dt := dv.Type()
+	st := sv.Type()
+
+	if dv.Kind() != reflect.Struct {
+		return fmt.Errorf("invalid field: %s, should be struct", dt.Name())
+	}
+
+	if sv.Kind() != reflect.Struct && sv.Kind() != reflect.Map {
+		return fmt.Errorf("invalid field: %s, should be struct,map", st.Name())
+	}
+
+	fds := map[string]struct{}{}
+
+	if sv.Kind() == reflect.Struct {
+		fromField(dv, sv, &fds)
+		fromMethod(dv, sv, &fds)
+		if sv.CanAddr() {
+			fromMethod(dv, sv.Addr(), &fds)
+		}
+	} else if sv.Kind() == reflect.Map {
+		fromMap(dv, sv, &fds)
 	}
 
 	return nil
